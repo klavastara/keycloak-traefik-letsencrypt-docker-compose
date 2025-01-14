@@ -16,8 +16,8 @@ jobs:
       NETWORK_ONE: keycloak-network
       NETWORK_TWO: traefik-network
       DOCKER_COMPOSE_FILE: keycloak-traefik-letsencrypt-docker-compose.yml
-      APP_HOSTNAME: keycloak.heyvaldemar.net
-      APP_TRAEFIK_HOSTNAME: traefik.keycloak.heyvaldemar.net
+      APP_HOSTNAME: keycloak.pokcha.ru
+      APP_TRAEFIK_HOSTNAME: traefik.keycloak.pokcha.ru
       COMPOSE_PROJECT_NAME: keycloak
 
     steps:
