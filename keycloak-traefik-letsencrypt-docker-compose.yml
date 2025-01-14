@@ -12,17 +12,17 @@ volumes:
 
 services:
   postgres:
-    image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
+    image: postgres:latest
     volumes:
       - keycloak-postgres:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: ${KEYCLOAK_DB_NAME}
-      POSTGRES_USER: ${KEYCLOAK_DB_USER}
-      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      POSTGRES_DB: mykeycloakdb
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: admin
     networks:
       - keycloak-network
     healthcheck:
-      test: [ "CMD", "pg_isready", "-q", "-d", "${KEYCLOAK_DB_NAME}", "-U", "${KEYCLOAK_DB_USER}" ]
+      test: [ "CMD", "pg_isready", "-q", "-d", "mykeycloakdb", "-U", "myuser" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -30,19 +30,19 @@ services:
     restart: unless-stopped
 
   keycloak:
-    image: ${KEYCLOAK_IMAGE_TAG}
+    image: jboss/keycloak:26.0.8
     command: start
     environment:
       KC_DB: postgres
       KC_DB_URL_HOST: postgres
-      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME}
-      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_DB_URL_DATABASE: mykeycloakdb
+      KC_DB_USERNAME: myuser
+      KC_DB_PASSWORD: admin
       KC_DB_SCHEMA: public
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
       KC_HEALTH_ENABLED: 'true'
-      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
+      KC_HOSTNAME: keycloak.pokcha.ru
       KC_HTTP_ENABLED: 'true'
       KC_PROXY_HEADERS: 'xforwarded'
       PROXY_ADDRESS_FORWARDING: 'true'
@@ -50,38 +50,27 @@ services:
       - keycloak-network
       - traefik-network
     healthcheck:
-      test: 
-      - "CMD-SHELL"
-      - |
-        exec 3<>/dev/tcp/localhost/9000 &&
-        echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
-        cat <&3 | tee /tmp/healthcheck.log | grep -q '200 OK'
+      test:
+        - "CMD-SHELL"
+        - |
+          exec 3<>/dev/tcp/localhost/9000 &&
+          echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          cat <&3 | tee /tmp/healthcheck.log | grep -q '200 OK'
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 90s
     labels:
-      # Enable Traefik for this container
       - "traefik.enable=true"
-      # Match incoming requests on a specific hostname
-      - "traefik.http.routers.keycloak.rule=Host(`${KEYCLOAK_HOSTNAME}`)"
-      # Assign the router to a named Traefik service
+      - "traefik.http.routers.keycloak.rule=Host(`keycloak.pokcha.ru`)"
       - "traefik.http.routers.keycloak.service=keycloak"
-      # Use the 'websecure' (HTTPS) entry point
       - "traefik.http.routers.keycloak.entrypoints=websecure"
-      # Define the internal container port for routing
       - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
-      # Enable TLS on this router
       - "traefik.http.routers.keycloak.tls=true"
-      # Use Let's Encrypt for certificate management
       - "traefik.http.routers.keycloak.tls.certresolver=letsencrypt"
-      # Pass the original Host header to the container
       - "traefik.http.services.keycloak.loadbalancer.passhostheader=true"
-      # Apply a compression middleware
       - "traefik.http.routers.keycloak.middlewares=compresstraefik"
-      # Define settings for the compression middleware
       - "traefik.http.middlewares.compresstraefik.compress=true"
-      # Specify which Docker network Traefik should use for routing
       - "traefik.docker.network=traefik-network"
     restart: unless-stopped
     depends_on:
@@ -89,41 +78,24 @@ services:
         condition: service_healthy
 
   traefik:
-    image: ${TRAEFIK_IMAGE_TAG}
+    image: traefik:v2.5
     command:
-      # Set the log level (DEBUG, INFO, WARN, ERROR)
-      - "--log.level=${TRAEFIK_LOG_LEVEL}"
-      # Enable the built-in API and web-based dashboard on /dashboard
+      - "--log.level=INFO"
       - "--api.dashboard=true"
-      # Enable the /ping endpoint so we can health-check Traefik
       - "--ping=true"
-      # Assign the /ping endpoint to a dedicated entry point on port 8082
       - "--ping.entrypoint=ping"
       - "--entrypoints.ping.address=:8082"
-      # Define the primary HTTP entry point on port 80
       - "--entrypoints.web.address=:80"
-      # Define the secure (HTTPS) entry point on port 443
       - "--entrypoints.websecure.address=:443"
-      # Enable the Docker provider to detect containers and their labels
       - "--providers.docker=true"
-      # Point Traefik to the Docker socket
       - "--providers.docker.endpoint=unix:///var/run/docker.sock"
-      # Prevent automatic exposure of all containers; only expose containers
-      # with "traefik.enable=true"
       - "--providers.docker.exposedbydefault=false"
-      # Use ACME (Let's Encrypt) to generate/renew certificates via TLS challenge
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      # The email address used by Let's Encrypt for renewal notices
-      - "--certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}"
-      # The file where ACME certificates are stored inside the container
+      - "--certificatesresolvers.letsencrypt.acme.email=stamkos61@mail.ru"
       - "--certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme/acme.json"
-      # Enable Prometheus metrics
       - "--metrics.prometheus=true"
-      # Configure Prometheus histogram buckets
       - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
-      # Check for newer Traefik versions and optionally log that info
       - "--global.checknewversion=true"
-      # Disable sending anonymous usage data to the Traefik maintainers
       - "--global.sendanonymoususage=false"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -140,48 +112,54 @@ services:
       retries: 3
       start_period: 5s
     labels:
-      # Enable Traefik for this container.
-      - "traefik.enable=true"
-      # A router to expose the Traefik dashboard
-      - "traefik.http.routers.dashboard.rule=Host(`${TRAEFIK_HOSTNAME}`)"
-      - "traefik.http.routers.dashboard.entrypoints=websecure"
-      - "traefik.http.routers.dashboard.tls=true"
-      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.dashboard.service=api@internal"
-      # asic Authentication for the Traefik dashboard
-      - "traefik.http.routers.dashboard.middlewares=authtraefik"
-      - "traefik.http.middlewares.authtraefik.basicauth.users=${TRAEFIK_BASIC_AUTH}"
-      # Specify the internal server port to the dashboard service
-      - "traefik.http.services.dashboard.loadbalancer.server.port=8080"
-      # Pass the original Host header to the backend
-      - "traefik.http.services.dashboard.loadbalancer.passhostheader=true"
-      # HTTP -> HTTPS redirect for all hosts
-      - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
-      - "traefik.http.routers.http-catchall.entrypoints=web"
-      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
-      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+        # Enable Traefik for this container.
+        - "traefik.enable=true"
+        # A router to expose the Traefik dashboard.
+        - "traefik.http.routers.dashboard.rule=Host(`traefik.pokcha.ru`)"
+        - "traefik.http.routers.dashboard.entrypoints=websecure"
+        - "traefik.http.routers.dashboard.tls=true"
+        - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.dashboard.service=api@internal"
+        # Basic Authentication for the Traefik dashboard.
+        # Note that you need to set TRAEFIK_BASIC_AUTH environment variable with a base64 encoded username and password.
+        # For example, using htpasswd utility.
+        # Example command to generate a user/password combination in base64 format (replace with your values):
+        # echo $(htpasswd -nb admin admin | sed -e s'/\:.*//')":"$(htpasswd -nb admin admin | sed -e s'/^.*\://')
+        # And then set it as the TRAEFIK_BASIC_AUTH variable.
+        # For now, it is commented out.
+        #- "traefik.http.routers.dashboard.middlewares=authtraefik" 
+        #- "traefik.http.middlewares.authtraefik.basicauth.users=${TRAEFIK_BASIC_AUTH}"
+        # Specify the internal server port to the dashboard service.
+        - "traefik.http.services.dashboard.loadbalancer.server.port=8080"
+        # Pass the original Host header to the backend.
+        - "traefik.http.services.dashboard.loadbalancer.passhostheader=true"
+        # HTTP -> HTTPS redirect for all hosts.
+        - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
+        - "traefik.http.routers.http-catchall.entrypoints=web"
+        - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+        - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https" 
     restart: unless-stopped
 
   backups:
-    image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
+    image: postgres:latest  # Укажите нужный тег образа
     command: >-
-      sh -c 'sleep $KEYCLOAK_BACKUP_INIT_SLEEP &&
+      sh -c 'sleep 10 &&  # Время ожидания перед началом бэкапа
       while true; do
-        pg_dump -h postgres -p 5432 -d $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER | gzip > $KEYCLOAK_POSTGRES_BACKUPS_PATH/$KEYCLOAK_POSTGRES_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").gz &&
-        find $KEYCLOAK_POSTGRES_BACKUPS_PATH -type f -mtime +$KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS | xargs rm -f &&
-        sleep $KEYCLOAK_BACKUP_INTERVAL; done'
+        pg_dump -h postgres -p 5432 -d mykeycloakdb -U myuser | gzip > /var/lib/postgresql/data/mybackup-$(date "+%Y-%m-%d_%H-%M").gz &&
+        find /var/lib/postgresql/data -type f -mtime +7 | xargs rm -f &&  # Удаление старых бэкапов
+        sleep 3600; done'  # Интервал между бэкапами
     volumes:
       - keycloak-postgres-backup:/var/lib/postgresql/data
-      - keycloak-database-backups:${KEYCLOAK_POSTGRES_BACKUPS_PATH}
+      - keycloak-database-backups:/var/lib/postgresql/data  # Путь для хранения бэкапов
     environment:
-      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME}
-      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER}
-      PGPASSWORD: ${KEYCLOAK_DB_PASSWORD}
-      KEYCLOAK_BACKUP_INIT_SLEEP: ${KEYCLOAK_BACKUP_INIT_SLEEP}
-      KEYCLOAK_BACKUP_INTERVAL: ${KEYCLOAK_BACKUP_INTERVAL}
-      KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS: ${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS}
-      KEYCLOAK_POSTGRES_BACKUPS_PATH: ${KEYCLOAK_POSTGRES_BACKUPS_PATH}
-      KEYCLOAK_POSTGRES_BACKUP_NAME: ${KEYCLOAK_POSTGRES_BACKUP_NAME}
+      KEYCLOAK_DB_NAME: mykeycloakdb
+      KEYCLOAK_DB_USER: myuser
+      PGPASSWORD: admin
+      KEYCLOAK_BACKUP_INIT_SLEEP: 10
+      KEYCLOAK_BACKUP_INTERVAL: 3600
+      KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS: 7
+      KEYCLOAK_POSTGRES_BACKUPS_PATH: /var/lib/postgresql/data
+      KEYCLOAK_POSTGRES_BACKUP_NAME: mybackup
     networks:
       - keycloak-network
     restart: unless-stopped
