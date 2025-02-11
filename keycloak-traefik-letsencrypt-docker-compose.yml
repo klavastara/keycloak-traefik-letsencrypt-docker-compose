@@ -42,7 +42,7 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_HEALTH_ENABLED: 'true'
-      KC_HOSTNAME: keycloak.pokcha.ru
+      KC_HOSTNAME: a-key.aventin.spb.ru
       KC_HTTP_ENABLED: 'true'
       KC_PROXY_HEADERS: 'xforwarded'
       PROXY_ADDRESS_FORWARDING: 'true'
@@ -62,7 +62,7 @@ services:
       start_period: 90s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.keycloak.rule=Host(`keycloak.pokcha.ru`)"
+      - "traefik.http.routers.keycloak.rule=Host(`a-key.aventin.spb.ru`)"
       - "traefik.http.routers.keycloak.service=keycloak"
       - "traefik.http.routers.keycloak.entrypoints=websecure"
       - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
@@ -115,7 +115,7 @@ services:
         # Enable Traefik for this container.
         - "traefik.enable=true"
         # A router to expose the Traefik dashboard.
-        - "traefik.http.routers.dashboard.rule=Host(`traefik.pokcha.ru`)"
+        - "traefik.http.routers.dashboard.rule=Host(`traefik.a-key.aventin.spb.ru`)"
         - "traefik.http.routers.dashboard.entrypoints=websecure"
         - "traefik.http.routers.dashboard.tls=true"
         - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
